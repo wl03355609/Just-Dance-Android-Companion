@@ -16,6 +16,7 @@ final class BotState {
     final String overlayTheme;
     final String channel;
     final boolean botConnected;
+    final boolean queueOpen;
 
     private BotState(
             List<QueueEntry> queue,
@@ -26,7 +27,8 @@ final class BotState {
             int maxQueueSize,
             String overlayTheme,
             String channel,
-            boolean botConnected
+            boolean botConnected,
+            boolean queueOpen
     ) {
         this.queue = queue;
         this.history = history;
@@ -37,6 +39,7 @@ final class BotState {
         this.overlayTheme = overlayTheme;
         this.channel = channel;
         this.botConnected = botConnected;
+        this.queueOpen = queueOpen;
     }
 
     static BotState fromJson(JSONObject json) {
@@ -51,7 +54,8 @@ final class BotState {
                 json.optInt("maxQueueSize", 0),
                 json.optString("overlayTheme", "dark"),
                 json.optString("channel", ""),
-                json.optBoolean("botConnected", false)
+                json.optBoolean("botConnected", false),
+                json.optBoolean("queueOpen", true)
         );
     }
 

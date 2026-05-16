@@ -64,6 +64,15 @@ public final class MainActivity extends Activity {
     private LinearLayout queueList;
     private LinearLayout historyList;
     private LinearLayout filterList;
+    private TextView statusSectionTitle;
+    private LinearLayout statusSectionBody;
+    private TextView statusSectionChevron;
+    private TextView filterSectionChevron;
+    private LinearLayout filterSectionBody;
+    private TextView queueSectionTitle;
+    private Button queueToggleButton;
+    private boolean queueOpenState = true;
+    private boolean statusAutoCollapsed;
 
     private final List<Song> songs = new ArrayList<>();
     private final List<CheckBox> filterChecks = new ArrayList<>();
@@ -180,6 +189,7 @@ public final class MainActivity extends Activity {
     private void showRemoteUi(InitialData data, String token, String notice) {
         linkedBaseUrl = data.client.getBaseUrl();
         apiClient = data.client;
+        statusAutoCollapsed = false;
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(false);
@@ -216,24 +226,31 @@ public final class MainActivity extends Activity {
 
     private View statusSection() {
         LinearLayout section = card();
-        section.addView(sectionTitle("Bot Status"));
+
+        LinearLayout header = collapsibleHeader("Bot Status");
+        statusSectionTitle = (TextView) header.getChildAt(0);
+        statusSectionChevron = (TextView) header.getChildAt(1);
+        section.addView(header, matchWrap());
+
+        statusSectionBody = new LinearLayout(this);
+        statusSectionBody.setOrientation(LinearLayout.VERTICAL);
 
         statusView = textView("Disconnected", 16, Typeface.BOLD, readableOn(danger));
         statusView.setGravity(Gravity.CENTER_VERTICAL);
         statusView.setMinHeight(dp(44));
         statusView.setPadding(dp(12), 0, dp(12), 0);
         statusView.setBackground(roundRect(danger, 20));
-        section.addView(statusView, matchWrap());
+        statusSectionBody.addView(statusView, topMargin(matchWrap(), 10));
 
         channelView = textView("Channel: -", 14, Typeface.NORMAL, muted);
         queueCountView = textView("Queue: -", 14, Typeface.NORMAL, muted);
         songCountView = textView("Catalog: -", 14, Typeface.NORMAL, muted);
-        section.addView(channelView, topMargin(matchWrap(), 8));
-        section.addView(queueCountView, matchWrap());
-        section.addView(songCountView, matchWrap());
+        statusSectionBody.addView(channelView, topMargin(matchWrap(), 8));
+        statusSectionBody.addView(queueCountView, matchWrap());
+        statusSectionBody.addView(songCountView, matchWrap());
 
         TextView linkedView = textView(linkedBaseUrl.isEmpty() ? "Linked: -" : "Linked: " + linkedBaseUrl, 13, Typeface.NORMAL, muted);
-        section.addView(linkedView, topMargin(matchWrap(), 8));
+        statusSectionBody.addView(linkedView, topMargin(matchWrap(), 8));
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -247,12 +264,42 @@ public final class MainActivity extends Activity {
         row.addView(tokenButton, weightWrap(1));
         row.addView(space(10), new LinearLayout.LayoutParams(dp(10), 1));
         row.addView(unlinkButton, weightWrap(1));
-        section.addView(row, topMargin(matchWrap(), 10));
+        statusSectionBody.addView(row, topMargin(matchWrap(), 10));
 
         messageView = textView("Linked.", 13, Typeface.NORMAL, muted);
         messageView.setPadding(0, dp(10), 0, 0);
-        section.addView(messageView, matchWrap());
+        statusSectionBody.addView(messageView, matchWrap());
+
+        section.addView(statusSectionBody, matchWrap());
+
+        header.setOnClickListener(view -> setStatusCollapsed(statusSectionBody.getVisibility() == View.VISIBLE));
+        setStatusCollapsed(false);
         return section;
+    }
+
+    private void setStatusCollapsed(boolean collapsed) {
+        if (statusSectionBody == null) return;
+        statusSectionBody.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+        if (statusSectionChevron != null) statusSectionChevron.setText(collapsed ? "▸" : "▾");
+    }
+
+    private LinearLayout collapsibleHeader(String label) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(40));
+        row.setPadding(0, 0, 0, dp(2));
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        TextView title = textView(label, 17, Typeface.BOLD, text);
+        title.setLayoutParams(weightWrap(1));
+        row.addView(title);
+
+        TextView chevron = textView("▾", 16, Typeface.BOLD, muted);
+        chevron.setPadding(dp(8), 0, dp(4), 0);
+        row.addView(chevron);
+        return row;
     }
 
     private View requestSection() {
@@ -305,30 +352,35 @@ public final class MainActivity extends Activity {
         row.addView(clearButton, weightWrap(1));
         section.addView(row, matchWrap());
 
-        LinearLayout themeRow = new LinearLayout(this);
-        themeRow.setOrientation(LinearLayout.HORIZONTAL);
-
-        Button darkButton = button("Dark Overlay", secondarySoft);
-        darkButton.setOnClickListener(view -> postAction(() -> apiClient.updateTheme("dark")));
-
-        Button lightButton = button("Light Overlay", secondarySoft);
-        lightButton.setOnClickListener(view -> postAction(() -> apiClient.updateTheme("light")));
-
-        themeRow.addView(darkButton, weightWrap(1));
-        themeRow.addView(space(10), new LinearLayout.LayoutParams(dp(10), 1));
-        themeRow.addView(lightButton, weightWrap(1));
-        section.addView(themeRow, topMargin(matchWrap(), 10));
+        queueToggleButton = button("Close Queue", secondarySoft);
+        queueToggleButton.setOnClickListener(view -> postAction(() -> apiClient.setQueueOpen(!queueOpenState)));
+        section.addView(queueToggleButton, topMargin(matchWrap(), 10));
         return section;
+    }
+
+    private void applyQueueToggleLabel() {
+        if (queueToggleButton == null) return;
+        boolean open = queueOpenState;
+        queueToggleButton.setText(open ? "Close Queue" : "Open Queue");
+        int color = open ? secondarySoft : accent;
+        queueToggleButton.setBackground(rippleRoundRect(color, 20));
+        queueToggleButton.setTextColor(readableOn(color));
     }
 
     private View queueSection() {
         LinearLayout section = card();
-        section.addView(sectionTitle("Queue"));
+        queueSectionTitle = sectionTitle("Queue");
+        section.addView(queueSectionTitle);
         queueList = new LinearLayout(this);
         queueList.setOrientation(LinearLayout.VERTICAL);
         section.addView(queueList, matchWrap());
         renderEmpty(queueList, "No queue entries yet.");
         return section;
+    }
+
+    private void applyQueueHeaderLabel() {
+        if (queueSectionTitle == null) return;
+        queueSectionTitle.setText(queueOpenState ? "Queue (Opened)" : "Queue (Closed)");
     }
 
     private View historySection() {
@@ -343,7 +395,13 @@ public final class MainActivity extends Activity {
 
     private View filtersSection() {
         LinearLayout section = card();
-        section.addView(sectionTitle("Game Filters"));
+
+        LinearLayout header = collapsibleHeader("Game Filters");
+        filterSectionChevron = (TextView) header.getChildAt(1);
+        section.addView(header, matchWrap());
+
+        filterSectionBody = new LinearLayout(this);
+        filterSectionBody.setOrientation(LinearLayout.VERTICAL);
 
         HorizontalScrollView actionsScroller = new HorizontalScrollView(this);
         actionsScroller.setHorizontalScrollBarEnabled(false);
@@ -365,13 +423,24 @@ public final class MainActivity extends Activity {
         actions.addView(selectNoneButton, new LinearLayout.LayoutParams(dp(96), dp(44)));
         actions.addView(space(8), new LinearLayout.LayoutParams(dp(8), 1));
         actions.addView(applyButton, new LinearLayout.LayoutParams(dp(112), dp(44)));
-        section.addView(actionsScroller, matchWrap());
+        filterSectionBody.addView(actionsScroller, topMargin(matchWrap(), 6));
 
         filterList = new LinearLayout(this);
         filterList.setOrientation(LinearLayout.VERTICAL);
-        section.addView(filterList, topMargin(matchWrap(), 8));
+        filterSectionBody.addView(filterList, topMargin(matchWrap(), 8));
         renderEmpty(filterList, "Connect to load filters.");
+
+        section.addView(filterSectionBody, matchWrap());
+
+        header.setOnClickListener(view -> setFiltersCollapsed(filterSectionBody.getVisibility() == View.VISIBLE));
+        setFiltersCollapsed(true);
         return section;
+    }
+
+    private void setFiltersCollapsed(boolean collapsed) {
+        if (filterSectionBody == null) return;
+        filterSectionBody.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+        if (filterSectionChevron != null) filterSectionChevron.setText(collapsed ? "▸" : "▾");
     }
 
     private void startAutoLink() {
@@ -632,6 +701,23 @@ public final class MainActivity extends Activity {
         renderQueue(state.queue);
         renderHistory(state.history);
         renderFilters(state.availableGames, new HashSet<>(state.enabledGames));
+
+        boolean linked = !linkedBaseUrl.isEmpty();
+        if (statusSectionTitle != null) {
+            String suffix;
+            if (!linked) suffix = "";
+            else if (state.botConnected) suffix = " — Connected";
+            else suffix = " — Bot online, Twitch offline";
+            statusSectionTitle.setText("Bot Status" + suffix);
+        }
+        if (linked && state.botConnected && !statusAutoCollapsed) {
+            statusAutoCollapsed = true;
+            setStatusCollapsed(true);
+        }
+
+        queueOpenState = state.queueOpen;
+        applyQueueHeaderLabel();
+        applyQueueToggleLabel();
     }
 
     private void renderQueue(List<QueueEntry> queue) {

@@ -77,6 +77,10 @@ final class BotApiClient {
         return postJson("/api/theme", new JSONObject().put("overlayTheme", theme));
     }
 
+    JSONObject setQueueOpen(boolean open) throws Exception {
+        return postJson("/api/queue/state", new JSONObject().put("open", open));
+    }
+
     JSONObject updateFilters(List<String> enabledGames) throws Exception {
         JSONArray games = new JSONArray();
         for (String game : enabledGames) games.put(game);
