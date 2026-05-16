@@ -103,3 +103,18 @@ The app supports:
 
 Android must be on the same Wi-Fi network as the computer running the bot or
 optional bridge.
+
+## Disclaimer
+
+This is an unofficial, fan-made companion app. It is not affiliated with,
+endorsed by, or sponsored by Ubisoft Entertainment.
+
+*Just Dance*, *Just Dance Unlimited*, *Just Dance+*, all related logos, song
+titles, artwork, and other identifiers are trademarks and/or copyrighted
+material of [Ubisoft Entertainment](https://www.ubisoft.com/) and their
+respective owners. They are referenced here only to display the song catalog
+maintained by the request bot — no game files, music, video, or artwork is
+bundled with this project.
+
+If you are a rights holder and would like content removed, open an issue on
+this repository.
