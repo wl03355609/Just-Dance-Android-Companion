@@ -193,7 +193,7 @@ public final class MainActivity extends Activity {
         TextView title = textView("Just Dance Remote", 30, Typeface.BOLD, text);
         root.addView(title, matchWrap());
 
-        TextView subtitle = textView("Linked - Pixel dynamic color", 14, Typeface.NORMAL, muted);
+        TextView subtitle = textView("Linked to bot", 14, Typeface.NORMAL, muted);
         subtitle.setPadding(0, dp(2), 0, dp(12));
         root.addView(subtitle, matchWrap());
 
@@ -238,10 +238,10 @@ public final class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button tokenButton = button("Update Token", secondarySoft);
+        Button tokenButton = button("Update Token", accent);
         tokenButton.setOnClickListener(view -> showTokenDialog());
 
-        Button unlinkButton = button("Unlink", field);
+        Button unlinkButton = button("Unlink", danger);
         unlinkButton.setOnClickListener(view -> unlink());
 
         row.addView(tokenButton, weightWrap(1));
