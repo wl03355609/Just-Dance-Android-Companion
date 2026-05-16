@@ -352,7 +352,7 @@ public final class MainActivity extends Activity {
         row.addView(clearButton, weightWrap(1));
         section.addView(row, matchWrap());
 
-        queueToggleButton = button("Close Queue", secondarySoft);
+        queueToggleButton = button("Close Queue", danger);
         queueToggleButton.setOnClickListener(view -> postAction(() -> apiClient.setQueueOpen(!queueOpenState)));
         section.addView(queueToggleButton, topMargin(matchWrap(), 10));
         return section;
@@ -362,7 +362,7 @@ public final class MainActivity extends Activity {
         if (queueToggleButton == null) return;
         boolean open = queueOpenState;
         queueToggleButton.setText(open ? "Close Queue" : "Open Queue");
-        int color = open ? secondarySoft : accent;
+        int color = open ? danger : accent;
         queueToggleButton.setBackground(rippleRoundRect(color, 20));
         queueToggleButton.setTextColor(readableOn(color));
     }
