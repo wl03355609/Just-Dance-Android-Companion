@@ -1,18 +1,17 @@
 # Just Dance Remote for Android
 
-This is a separate companion project for the Just Dance request bot. It does not
-change the bot. The bot currently listens on `127.0.0.1`, which is only reachable
-from the computer running it, so the phone app uses a tiny LAN bridge that
-forwards the existing bot API to your Android phone.
+This is the Android companion project for the Just Dance request bot. Current
+bot builds expose phone companion access directly on the same Wi-Fi network by
+default, so the separate bridge is only needed for older bot versions or custom
+local-only setups.
 
 ## How It Works
 
 ```text
-Android phone  ->  http://computer-ip:3000 or :3001  ->  http://127.0.0.1:3000
-                 LAN bridge                       existing bot
+Android phone  ->  http://computer-ip:3000  ->  Just Dance request bot
 ```
 
-The bridge only forwards:
+When using an older local-only bot, the optional bridge forwards:
 
 - `GET /api/queue`
 - `GET /api/songs`
@@ -29,9 +28,23 @@ The bridge only forwards:
 
 Mutating actions still require the bot dashboard token.
 
-## Run The Bridge
+## Direct Bot Link
 
-Start the bot or desktop app first. In another terminal:
+Start the bot or desktop app first. Leave **Phone companion access** enabled in
+the desktop app, or set this for CLI use:
+
+```env
+PHONE_COMPANION_ACCESS=true
+```
+
+The Android app can scan for the bot on the same Wi-Fi network. For manual
+linking, type the computer's LAN IPv4 address, such as `192.168.1.23`; the app
+tries port `3000` first.
+
+## Optional Legacy Bridge
+
+Use this only if the bot is configured to stay local-only. Start the bot or
+desktop app first. In another terminal:
 
 ```bash
 cd android-companion/bridge
@@ -50,9 +63,7 @@ BOT_PORT=3000 BRIDGE_PORT=3001 npm start
 ```
 
 The bridge prints LAN URLs such as `http://192.168.1.23:3000`. The Android app
-can auto-detect the bridge on the same Wi-Fi network. For manual linking, you can
-paste the full URL or just type the Windows IPv4 address, such as
-`192.168.1.23`; the app will try port `3000` first, then `3001`.
+can auto-detect the bridge on the same Wi-Fi network.
 
 If Windows Firewall asks about Node.js, allow it on private networks. The bridge
 uses the selected port for both TCP app API traffic and UDP auto-discovery.
@@ -83,4 +94,5 @@ The app supports:
 - enabled game filters
 - saved server URL, requester name, and dashboard token
 
-Android must be on the same Wi-Fi network as the computer running the bridge.
+Android must be on the same Wi-Fi network as the computer running the bot or
+optional bridge.
