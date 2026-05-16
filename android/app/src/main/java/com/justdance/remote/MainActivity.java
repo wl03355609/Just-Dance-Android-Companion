@@ -205,7 +205,6 @@ public final class MainActivity extends Activity {
         subtitle.setPadding(0, dp(2), 0, dp(12));
         root.addView(subtitle, matchWrap());
 
-        root.addView(linkedSection(token));
         root.addView(statusSection());
         root.addView(requestSection());
         root.addView(controlSection());
@@ -215,50 +214,14 @@ public final class MainActivity extends Activity {
 
         setContentView(scrollView);
 
+        tokenInput = null;
+
         songs.clear();
         songs.addAll(data.songs);
         songAdapter.notifyDataSetChanged();
         renderState(data.state);
         startEvents(linkedBaseUrl);
         showMessage(notice, false);
-    }
-
-    private View linkedSection(String token) {
-        LinearLayout section = card();
-        section.addView(sectionTitle("Linked"));
-
-        TextView urlView = textView(linkedBaseUrl, 14, Typeface.BOLD, text);
-        urlView.setPadding(dp(12), dp(10), dp(12), dp(10));
-        urlView.setBackground(roundRect(field, 18, outline, 1));
-        section.addView(urlView, matchWrap());
-
-        tokenInput = editText("Dashboard token");
-        tokenInput.setSingleLine(true);
-        tokenInput.setText(token);
-        section.addView(tokenInput, topMargin(matchWrap(), 8));
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-
-        Button saveButton = button("Save Token", accent);
-        saveButton.setOnClickListener(view -> saveToken());
-
-        Button relinkButton = button("Relink", secondarySoft);
-        relinkButton.setOnClickListener(view -> {
-            linkAttemptId++;
-            showLinkPage();
-            startAutoLink();
-        });
-
-        row.addView(saveButton, weightWrap(1));
-        row.addView(space(10), new LinearLayout.LayoutParams(dp(10), 1));
-        row.addView(relinkButton, weightWrap(1));
-        section.addView(row, topMargin(matchWrap(), 10));
-
-        messageView = textView("Linked.", 13, Typeface.NORMAL, muted);
-        messageView.setPadding(0, dp(10), 0, 0);
-        section.addView(messageView, matchWrap());
-        return section;
     }
 
     private View statusSection() {
@@ -278,6 +241,27 @@ public final class MainActivity extends Activity {
         section.addView(channelView, topMargin(matchWrap(), 8));
         section.addView(queueCountView, matchWrap());
         section.addView(songCountView, matchWrap());
+
+        TextView linkedView = textView(linkedBaseUrl.isEmpty() ? "Linked: -" : "Linked: " + linkedBaseUrl, 13, Typeface.NORMAL, muted);
+        section.addView(linkedView, topMargin(matchWrap(), 8));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button tokenButton = button("Update Token", secondarySoft);
+        tokenButton.setOnClickListener(view -> showTokenDialog());
+
+        Button unlinkButton = button("Unlink", field);
+        unlinkButton.setOnClickListener(view -> unlink());
+
+        row.addView(tokenButton, weightWrap(1));
+        row.addView(space(10), new LinearLayout.LayoutParams(dp(10), 1));
+        row.addView(unlinkButton, weightWrap(1));
+        section.addView(row, topMargin(matchWrap(), 10));
+
+        messageView = textView("Linked.", 13, Typeface.NORMAL, muted);
+        messageView.setPadding(0, dp(10), 0, 0);
+        section.addView(messageView, matchWrap());
         return section;
     }
 
@@ -499,11 +483,38 @@ public final class MainActivity extends Activity {
         return preferences.getString(KEY_TOKEN, "").trim();
     }
 
-    private void saveToken() {
-        String token = currentToken();
+    private void showTokenDialog() {
+        EditText input = editText("Dashboard token");
+        input.setSingleLine(true);
+        input.setText(preferences.getString(KEY_TOKEN, ""));
+        input.setSelectAllOnFocus(true);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setPadding(dp(4), dp(8), dp(4), 0);
+        content.addView(input, matchWrap());
+
+        new AlertDialog.Builder(this)
+                .setTitle("Update token")
+                .setMessage("Paste the dashboard token for queue controls.")
+                .setView(content)
+                .setPositiveButton("Update Token", (dialog, which) -> updateToken(input.getText().toString().trim()))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void updateToken(String token) {
         preferences.edit().putString(KEY_TOKEN, token).apply();
         if (!linkedBaseUrl.isEmpty()) apiClient = new BotApiClient(linkedBaseUrl, token);
-        showMessage("Token saved.", false);
+        showMessage(token.isEmpty() ? "Token cleared." : "Token updated.", false);
+    }
+
+    private void unlink() {
+        linkAttemptId++;
+        linkedBaseUrl = "";
+        apiClient = null;
+        if (eventStreamClient != null) eventStreamClient.stop();
+        preferences.edit().remove(KEY_BASE_URL).apply();
+        showLinkPage();
     }
 
     private void startEvents(String baseUrl) {
