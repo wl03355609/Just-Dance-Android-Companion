@@ -38,8 +38,14 @@ PHONE_COMPANION_ACCESS=true
 ```
 
 The Android app can scan for the bot on the same Wi-Fi network. For manual
-linking, type the computer's LAN IPv4 address, such as `192.168.1.23`; the app
-tries port `3000` first.
+linking, type the computer's LAN IPv4 address, such as `192.168.1.23`, or paste
+the phone companion URL shown in the desktop app. The app tries port `3000`
+first.
+
+After the app links, click **Pair Phone** in the desktop app, then tap **Update
+Token** in the Android app and enter the 6-digit code. The Android app stores
+the dashboard token automatically after pairing, so you do not need to copy the
+raw token.
 
 ## Optional Legacy Bridge
 
@@ -70,7 +76,8 @@ uses the selected port for both TCP app API traffic and UDP auto-discovery.
 
 ## Dashboard Token
 
-For queue controls, copy the token from the dashboard URL printed by the bot:
+Current bot builds should use the 6-digit pairing code above. For older builds
+or manual fallback, copy the token from the dashboard URL printed by the bot:
 
 ```text
 http://localhost:3000/dashboard?token=YOUR_TOKEN_HERE
@@ -92,7 +99,7 @@ The app supports:
 - pick, remove, next, and clear controls
 - dark/light overlay theme switching
 - enabled game filters
-- saved server URL, requester name, and dashboard token
+- saved server URL and dashboard token
 
 Android must be on the same Wi-Fi network as the computer running the bot or
 optional bridge.

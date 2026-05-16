@@ -46,11 +46,15 @@ final class BotApiClient {
         return result;
     }
 
-    JSONObject requestSong(String user, String song) throws Exception {
+    JSONObject requestSong(String song) throws Exception {
         JSONObject body = new JSONObject()
-                .put("user", user)
                 .put("song", song);
         return postJson("/api/request", body);
+    }
+
+    String pairCompanion(String code) throws Exception {
+        JSONObject result = postJson("/api/companion/pair", new JSONObject().put("code", code));
+        return result.optString("dashboardToken", "");
     }
 
     JSONObject skipSong() throws Exception {

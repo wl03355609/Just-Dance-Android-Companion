@@ -43,7 +43,6 @@ public final class MainActivity extends Activity {
     private static final String PREFS = "just_dance_remote";
     private static final String KEY_BASE_URL = "base_url";
     private static final String KEY_TOKEN = "admin_token";
-    private static final String KEY_USER = "request_user";
     private static final int SAFE_TOP_EXTRA_DP = 34;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -56,8 +55,6 @@ public final class MainActivity extends Activity {
 
     private TextView linkStatusView;
     private EditText serverInput;
-    private EditText tokenInput;
-    private EditText userInput;
     private AutoCompleteTextView songInput;
     private TextView messageView;
     private TextView statusView;
@@ -154,7 +151,7 @@ public final class MainActivity extends Activity {
         LinearLayout section = card();
         section.addView(sectionTitle("Manual Link"));
 
-        TextView helper = textView("Enter your Windows IPv4 address. The app tries port 3000 first.", 13, Typeface.NORMAL, muted);
+        TextView helper = textView("Enter the computer IPv4 address or the Phone companion URL. The app tries port 3000 first.", 13, Typeface.NORMAL, muted);
         helper.setPadding(0, 0, 0, dp(8));
         section.addView(helper, matchWrap());
 
@@ -163,11 +160,6 @@ public final class MainActivity extends Activity {
         serverInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         serverInput.setText(preferences.getString(KEY_BASE_URL, ""));
         section.addView(serverInput, matchWrap());
-
-        tokenInput = editText("Dashboard token");
-        tokenInput.setSingleLine(true);
-        tokenInput.setText(preferences.getString(KEY_TOKEN, ""));
-        section.addView(tokenInput, topMargin(matchWrap(), 8));
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -213,8 +205,6 @@ public final class MainActivity extends Activity {
         root.addView(filtersSection());
 
         setContentView(scrollView);
-
-        tokenInput = null;
 
         songs.clear();
         songs.addAll(data.songs);
@@ -269,11 +259,6 @@ public final class MainActivity extends Activity {
         LinearLayout section = card();
         section.addView(sectionTitle("Add Request"));
 
-        userInput = editText("Requester name");
-        userInput.setSingleLine(true);
-        userInput.setText(preferences.getString(KEY_USER, "phone"));
-        section.addView(userInput, matchWrap());
-
         songInput = new AutoCompleteTextView(this);
         styleEditText(songInput, "Song title or YouTube URL");
         songInput.setSingleLine(true);
@@ -293,7 +278,7 @@ public final class MainActivity extends Activity {
             }
             return false;
         });
-        section.addView(songInput, topMargin(matchWrap(), 8));
+        section.addView(songInput, matchWrap());
 
         Button addButton = button("Add To Queue", accent);
         addButton.setOnClickListener(view -> addRequest());
@@ -408,7 +393,7 @@ public final class MainActivity extends Activity {
 
             String discoveredUrl = new BotDiscoveryClient().findFirst();
             if (discoveredUrl == null) {
-                postLinkStatus(attempt, "No bot found. Start the bridge, then scan again.", true);
+                postLinkStatus(attempt, "No bot found. Start the bot with phone companion access on, then scan again.", true);
                 return;
             }
 
@@ -446,7 +431,7 @@ public final class MainActivity extends Activity {
             }
 
             String detail = lastError == null ? "No response." : lastError.getMessage();
-            postLinkStatus(attempt, "Could not link. Check bridge on Windows port 3000 or 3001. " + detail, true);
+            postLinkStatus(attempt, "Could not link. Check the bot's phone companion URL on port 3000. " + detail, true);
         });
     }
 
@@ -479,15 +464,14 @@ public final class MainActivity extends Activity {
     }
 
     private String currentToken() {
-        if (tokenInput != null) return tokenInput.getText().toString().trim();
         return preferences.getString(KEY_TOKEN, "").trim();
     }
 
     private void showTokenDialog() {
-        EditText input = editText("Dashboard token");
+        EditText input = editText("Pairing code or dashboard token");
         input.setSingleLine(true);
-        input.setText(preferences.getString(KEY_TOKEN, ""));
         input.setSelectAllOnFocus(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
 
         LinearLayout content = new LinearLayout(this);
         content.setPadding(dp(4), dp(8), dp(4), 0);
@@ -495,11 +479,33 @@ public final class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
                 .setTitle("Update token")
-                .setMessage("Paste the dashboard token for queue controls.")
+                .setMessage("Use Pair Phone in the desktop app, then enter the 6-digit code here. Pasting a dashboard token still works.")
                 .setView(content)
-                .setPositiveButton("Update Token", (dialog, which) -> updateToken(input.getText().toString().trim()))
+                .setPositiveButton("Update Token", (dialog, which) -> pairOrUpdateToken(input.getText().toString().trim()))
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void pairOrUpdateToken(String value) {
+        String digits = value.replaceAll("\\D", "");
+        if (digits.length() == 6 && value.length() <= 12 && apiClient != null) {
+            pairWithCode(digits);
+            return;
+        }
+        updateToken(value);
+    }
+
+    private void pairWithCode(String code) {
+        showMessage("Pairing phone...", false);
+        io.execute(() -> {
+            try {
+                String token = apiClient.pairCompanion(code);
+                if (token.isEmpty()) throw new Exception("Pairing succeeded, but no token was returned.");
+                mainHandler.post(() -> updateToken(token));
+            } catch (Exception error) {
+                mainHandler.post(() -> showMessage(error.getMessage(), true));
+            }
+        });
     }
 
     private void updateToken(String token) {
@@ -540,25 +546,21 @@ public final class MainActivity extends Activity {
 
     private void addRequest() {
         if (apiClient == null) {
-            showMessage("Connect to the bridge first.", true);
+            showMessage("Connect to the bot first.", true);
             return;
         }
 
-        String user = userInput.getText().toString().trim();
         String song = songInput.getText().toString().trim();
-        if (user.isEmpty()) user = "phone";
         if (song.isEmpty()) {
             showMessage("Enter a song request.", true);
             return;
         }
 
-        String finalUser = user;
-        preferences.edit().putString(KEY_USER, finalUser).apply();
         showMessage("Adding request...", false);
 
         io.execute(() -> {
             try {
-                JSONObject result = apiClient.requestSong(finalUser, song);
+                JSONObject result = apiClient.requestSong(song);
                 mainHandler.post(() -> {
                     songInput.setText("");
                     showResult(result);
@@ -571,7 +573,7 @@ public final class MainActivity extends Activity {
 
     private void postAction(ApiAction action) {
         if (apiClient == null) {
-            showMessage("Connect to the bridge first.", true);
+            showMessage("Connect to the bot first.", true);
             return;
         }
 
@@ -699,7 +701,6 @@ public final class MainActivity extends Activity {
         for (GameOption game : games) {
             CheckBox checkBox = new CheckBox(this);
             checkBox.setText(game.displayLabel());
-            checkBox.setTextColor(text);
             checkBox.setTextSize(14);
             checkBox.setMinHeight(dp(48));
             checkBox.setPadding(dp(12), 0, dp(12), 0);
@@ -817,8 +818,8 @@ public final class MainActivity extends Activity {
 
     private Drawable chipBackground() {
         StateListDrawable drawable = new StateListDrawable();
-        drawable.addState(new int[]{android.R.attr.state_checked}, roundRect(accentSoft, 18, accent, 1));
-        drawable.addState(new int[]{}, roundRect(field, 18, outline, 1));
+        drawable.addState(new int[]{android.R.attr.state_checked}, roundRect(field, 0, accent, 2));
+        drawable.addState(new int[]{}, roundRect(field, 0, outline, 1));
         return drawable;
     }
 
@@ -829,7 +830,7 @@ public final class MainActivity extends Activity {
                         new int[]{}
                 },
                 new int[]{
-                        readableOn(accentSoft),
+                        accent,
                         text
                 }
         );
