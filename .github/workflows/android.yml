@@ -1,0 +1,31 @@
+name: Android build
+
+# Compiles the debug APK and runs the unit tests. It does not sign or publish anything.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The repo has no Gradle wrapper, so pin the version here.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Unit tests and debug build
+        working-directory: android
+        run: gradle --no-daemon testDebugUnitTest assembleDebug

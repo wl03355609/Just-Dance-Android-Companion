@@ -133,7 +133,8 @@ final class BotDiscoveryClient {
                     InetAddress address = addresses.nextElement();
                     if (!(address instanceof Inet4Address)) continue;
                     String local = address.getHostAddress();
-                    if (local.startsWith("127.") || local.startsWith("169.254.")) continue;
+                    // Only home/office ranges: never sweep a mobile carrier's or a public network.
+                    if (!LinkTarget.isPrivateIpv4(local)) continue;
 
                     int dot = local.lastIndexOf('.');
                     if (dot <= 0) continue;
@@ -175,7 +176,7 @@ final class BotDiscoveryClient {
                 DatagramPacket response = new DatagramPacket(buffer, buffer.length);
                 try {
                     socket.receive(response);
-                    String baseUrl = parseDiscoveryResponse(buffer, response.getLength());
+                    String baseUrl = parseDiscoveryResponse(buffer, response.getLength(), response.getAddress());
                     if (baseUrl != null && isBot(baseUrl)) return baseUrl;
                 } catch (Exception ignored) {
                     // Keep listening until the short broadcast window closes.
@@ -188,13 +189,15 @@ final class BotDiscoveryClient {
         return null;
     }
 
-    private String parseDiscoveryResponse(byte[] buffer, int length) {
+    // Anyone on the network can answer the broadcast, so the reply may only name the private
+    // address it was sent from.
+    private String parseDiscoveryResponse(byte[] buffer, int length, InetAddress source) {
         try {
             String body = new String(buffer, 0, length, StandardCharsets.UTF_8);
             JSONObject json = new JSONObject(body);
             if (!DISCOVERY_RESPONSE.equals(json.optString("kind"))) return null;
-            String baseUrl = json.optString("baseUrl", "");
-            return baseUrl.isEmpty() ? null : baseUrl;
+            if (source == null) return null;
+            return LinkTarget.discoveredBaseUrl(json.optString("baseUrl", ""), source.getHostAddress());
         } catch (Exception ignored) {
             return null;
         }
@@ -215,6 +218,7 @@ final class BotDiscoveryClient {
                     InetAddress address = inetAddresses.nextElement();
                     if (!(address instanceof Inet4Address)) continue;
                     String local = address.getHostAddress();
+                    if (!LinkTarget.isPrivateIpv4(local)) continue;
                     int dot = local.lastIndexOf('.');
                     if (dot > 0) addresses.add(local.substring(0, dot + 1) + "255");
                 }

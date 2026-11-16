@@ -20,6 +20,7 @@ import java.util.Set;
 final class BotApiClient {
     private final String baseUrl;
     private final String adminToken;
+    private Boolean tokenAllowed;
 
     BotApiClient(String baseUrl, String adminToken) {
         this.baseUrl = normalizeBaseUrl(baseUrl);
@@ -52,8 +53,10 @@ final class BotApiClient {
         return postJson("/api/request", body);
     }
 
-    String pairCompanion(String code) throws Exception {
-        JSONObject result = postJson("/api/companion/pair", new JSONObject().put("code", code));
+    /** Trades a 6-digit pairing code for a token. The saved token, if any, is not sent along. */
+    String pairCompanion(String code, String deviceName) throws Exception {
+        JSONObject body = new JSONObject().put("code", code).put("device", deviceName);
+        JSONObject result = postJson("/api/companion/pair", body, false);
         return result.optString("dashboardToken", "");
     }
 
@@ -87,15 +90,22 @@ final class BotApiClient {
         return postJson("/api/filters", new JSONObject().put("enabledGames", games));
     }
 
+    // Reading the queue and the song list needs no token, so GET requests never carry it.
     private JSONObject getJson(String path) throws Exception {
-        HttpURLConnection connection = open(path);
+        HttpURLConnection connection = open(path, false);
         connection.setRequestMethod("GET");
         return readJson(connection);
     }
 
     private JSONObject postJson(String path, JSONObject body) throws Exception {
-        HttpURLConnection connection = open(path);
+        return postJson(path, body, true);
+    }
+
+    private JSONObject postJson(String path, JSONObject body, boolean withToken) throws Exception {
+        HttpURLConnection connection = open(path, withToken);
         connection.setRequestMethod("POST");
+        // A redirect would repeat the request, token included, at whatever address the reply names.
+        connection.setInstanceFollowRedirects(false);
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
 
@@ -106,20 +116,35 @@ final class BotApiClient {
         return readJson(connection);
     }
 
-    private HttpURLConnection open(String path) throws IOException {
+    private HttpURLConnection open(String path, boolean withToken) throws IOException {
+        boolean sendToken = withToken && !adminToken.isEmpty();
+        if (sendToken && !tokenAllowed()) {
+            throw new IOException("The token is only sent over https or to a bot on your own network. Link with Cloud for a website.");
+        }
         URL url = new URL(baseUrl + path);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setConnectTimeout(5000);
         connection.setReadTimeout(10000);
         connection.setRequestProperty("Accept", "application/json");
-        if (!adminToken.isEmpty()) connection.setRequestProperty("X-Queue-Admin", adminToken);
+        if (sendToken) connection.setRequestProperty("X-Queue-Admin", adminToken);
         return connection;
+    }
+
+    private synchronized boolean tokenAllowed() {
+        if (tokenAllowed == null) tokenAllowed = LinkTarget.mayCarryToken(baseUrl);
+        return tokenAllowed;
     }
 
     private JSONObject readJson(HttpURLConnection connection) throws Exception {
         int status = connection.getResponseCode();
         String text = readAll(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
-        JSONObject data = text.isEmpty() ? new JSONObject() : new JSONObject(text);
+        JSONObject data;
+        try {
+            data = text.isEmpty() ? new JSONObject() : new JSONObject(text);
+        } catch (Exception error) {
+            // A web page instead of JSON: a wrong address, or a channel the site doesn't have.
+            throw new IOException("That address did not answer like the bot (HTTP " + status + ").");
+        }
         if (status < 200 || status >= 300 || data.optBoolean("ok", true) == false) {
             String message = data.optString("message", "Request failed.");
             throw new IOException(message);
