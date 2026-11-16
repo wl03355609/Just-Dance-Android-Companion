@@ -35,6 +35,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,6 +44,11 @@ public final class MainActivity extends Activity {
     private static final String PREFS = "just_dance_remote";
     private static final String KEY_BASE_URL = "base_url";
     private static final String KEY_TOKEN = "admin_token";
+    // The bot the saved token belongs to. The token is never sent to any other address.
+    private static final String KEY_TOKEN_URL = "admin_token_url";
+    private static final String KEY_MODE = "link_mode";
+    private static final String MODE_LAN = "lan";
+    private static final String MODE_CLOUD = "cloud";
     private static final int SAFE_TOP_EXTRA_DP = 34;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -55,6 +61,8 @@ public final class MainActivity extends Activity {
 
     private TextView linkStatusView;
     private EditText serverInput;
+    private EditText cloudSiteInput;
+    private EditText cloudChannelInput;
     private AutoCompleteTextView songInput;
     private TextView messageView;
     private TextView statusView;
@@ -78,6 +86,7 @@ public final class MainActivity extends Activity {
     private final List<CheckBox> filterChecks = new ArrayList<>();
     private volatile int linkAttemptId;
     private String linkedBaseUrl = "";
+    private boolean linkedCloud;
 
     private int background;
     private int surface;
@@ -96,9 +105,21 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
+        bindSavedToken();
         initColors();
         showLinkPage();
-        startAutoLink();
+        startAutoLink(false);
+    }
+
+    // Tokens saved by older versions weren't tied to a bot. Tie them to the saved link, or drop them.
+    private void bindSavedToken() {
+        if (preferences.getString(KEY_TOKEN, "").isEmpty() || preferences.contains(KEY_TOKEN_URL)) return;
+        String savedUrl = BotApiClient.normalizeBaseUrl(preferences.getString(KEY_BASE_URL, ""));
+        if (savedUrl.isEmpty()) {
+            preferences.edit().remove(KEY_TOKEN).apply();
+        } else {
+            preferences.edit().putString(KEY_TOKEN_URL, savedUrl).apply();
+        }
     }
 
     @Override
@@ -141,7 +162,7 @@ public final class MainActivity extends Activity {
         TextView title = textView("Link Remote", 30, Typeface.BOLD, text);
         root.addView(title, matchWrap());
 
-        TextView subtitle = textView("Finding the bot on this Wi-Fi.", 14, Typeface.NORMAL, muted);
+        TextView subtitle = textView("Link to a bot on this Wi-Fi, or to your channel on a hosted site.", 14, Typeface.NORMAL, muted);
         subtitle.setPadding(0, dp(2), 0, dp(12));
         root.addView(subtitle, matchWrap());
 
@@ -153,21 +174,50 @@ public final class MainActivity extends Activity {
         root.addView(linkStatusView, matchWrap());
 
         root.addView(linkSection());
+        root.addView(cloudLinkSection());
         setContentView(scrollView);
+    }
+
+    private View cloudLinkSection() {
+        LinearLayout section = card();
+        section.addView(sectionTitle("Cloud"));
+
+        TextView helper = textView("For a hosted bot: enter the website and your Twitch channel, or paste your /c/channel link. https only.", 13, Typeface.NORMAL, muted);
+        helper.setPadding(0, 0, 0, dp(8));
+        section.addView(helper, matchWrap());
+
+        String[] saved = LinkTarget.cloudParts(isCloudMode() ? preferences.getString(KEY_BASE_URL, "") : "");
+
+        cloudSiteInput = editText("Website, for example jd.example.com");
+        cloudSiteInput.setSingleLine(true);
+        cloudSiteInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        cloudSiteInput.setText(saved[0]);
+        section.addView(cloudSiteInput, matchWrap());
+
+        cloudChannelInput = editText("Twitch channel");
+        cloudChannelInput.setSingleLine(true);
+        cloudChannelInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        cloudChannelInput.setText(saved[1]);
+        section.addView(cloudChannelInput, topMargin(matchWrap(), 8));
+
+        Button linkButton = button("Link Cloud", accent);
+        linkButton.setOnClickListener(view -> linkCloud());
+        section.addView(linkButton, topMargin(matchWrap(), 10));
+        return section;
     }
 
     private View linkSection() {
         LinearLayout section = card();
-        section.addView(sectionTitle("Manual Link"));
+        section.addView(sectionTitle("Same Wi-Fi"));
 
-        TextView helper = textView("Enter the computer IPv4 address or the Phone companion URL. The app tries port 3000 first.", 13, Typeface.NORMAL, muted);
+        TextView helper = textView("For the desktop bot: tap Scan, or enter the computer IPv4 address or the Phone companion URL. The app tries port 3000 first.", 13, Typeface.NORMAL, muted);
         helper.setPadding(0, 0, 0, dp(8));
         section.addView(helper, matchWrap());
 
         serverInput = editText("Windows IP, for example 192.168.1.23");
         serverInput.setSingleLine(true);
         serverInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        serverInput.setText(preferences.getString(KEY_BASE_URL, ""));
+        serverInput.setText(isCloudMode() ? "" : preferences.getString(KEY_BASE_URL, ""));
         section.addView(serverInput, matchWrap());
 
         LinearLayout row = new LinearLayout(this);
@@ -177,7 +227,7 @@ public final class MainActivity extends Activity {
         linkButton.setOnClickListener(view -> linkFromInputs());
 
         Button scanButton = button("Scan", secondarySoft);
-        scanButton.setOnClickListener(view -> startAutoLink());
+        scanButton.setOnClickListener(view -> startAutoLink(true));
 
         row.addView(linkButton, weightWrap(1));
         row.addView(space(10), new LinearLayout.LayoutParams(dp(10), 1));
@@ -186,8 +236,9 @@ public final class MainActivity extends Activity {
         return section;
     }
 
-    private void showRemoteUi(InitialData data, String token, String notice) {
+    private void showRemoteUi(InitialData data, boolean cloud, String notice) {
         linkedBaseUrl = data.client.getBaseUrl();
+        linkedCloud = cloud;
         apiClient = data.client;
         statusAutoCollapsed = false;
 
@@ -203,7 +254,7 @@ public final class MainActivity extends Activity {
         TextView title = textView("Just Dance Remote", 30, Typeface.BOLD, text);
         root.addView(title, matchWrap());
 
-        TextView subtitle = textView("Linked to bot", 14, Typeface.NORMAL, muted);
+        TextView subtitle = textView(cloud ? "Linked to hosted bot" : "Linked to bot", 14, Typeface.NORMAL, muted);
         subtitle.setPadding(0, dp(2), 0, dp(12));
         root.addView(subtitle, matchWrap());
 
@@ -443,19 +494,32 @@ public final class MainActivity extends Activity {
         if (filterSectionChevron != null) filterSectionChevron.setText(collapsed ? "▸" : "▾");
     }
 
-    private void startAutoLink() {
+    // Tries the saved link, then (same Wi-Fi mode only) looks for a bot on the network.
+    // userScan: the Scan button, which always means "search this Wi-Fi".
+    private void startAutoLink(boolean userScan) {
         int attempt = nextLinkAttempt();
-        String savedUrl = preferences.getString(KEY_BASE_URL, "").trim();
-        String token = currentToken();
+        boolean savedCloud = isCloudMode();
+        String savedUrl = userScan && savedCloud ? "" : preferences.getString(KEY_BASE_URL, "").trim();
+
+        if (savedCloud && savedUrl.isEmpty() && !userScan) {
+            // Last used with a hosted bot: wait for the user instead of probing whatever Wi-Fi this is.
+            updateLinkStatus("Enter your website and channel under Cloud, or tap Scan for a bot on this Wi-Fi.", false);
+            return;
+        }
 
         updateLinkStatus(savedUrl.isEmpty() ? "Scanning this Wi-Fi..." : "Checking saved link...", false);
         io.execute(() -> {
             if (!savedUrl.isEmpty()) {
                 try {
-                    InitialData data = loadInitialData(savedUrl, token);
-                    postRemote(attempt, data, token, "Linked to saved bot.");
+                    InitialData data = loadInitialData(savedUrl);
+                    postRemote(attempt, data, savedCloud, savedCloud ? "Linked to saved channel." : "Linked to saved bot.");
                     return;
                 } catch (Exception error) {
+                    if (savedCloud) {
+                        // A hosted bot is never searched for on the local network.
+                        postLinkStatus(attempt, "Could not reach the saved site: " + error.getMessage(), true);
+                        return;
+                    }
                     postLinkStatus(attempt, "Saved link failed. Scanning Wi-Fi...", false);
                 }
             }
@@ -467,8 +531,8 @@ public final class MainActivity extends Activity {
             }
 
             try {
-                InitialData data = loadInitialData(discoveredUrl, token);
-                postRemote(attempt, data, token, "Linked automatically to " + data.client.getBaseUrl());
+                InitialData data = loadInitialData(discoveredUrl);
+                postRemote(attempt, data, false, "Linked automatically to " + data.client.getBaseUrl());
             } catch (Exception error) {
                 postLinkStatus(attempt, "Found a bot, but could not load it: " + error.getMessage(), true);
             }
@@ -477,10 +541,9 @@ public final class MainActivity extends Activity {
 
     private void linkFromInputs() {
         List<String> candidates = BotApiClient.manualBaseUrlCandidates(serverInput.getText().toString());
-        String token = currentToken();
 
         if (candidates.isEmpty()) {
-            startAutoLink();
+            startAutoLink(true);
             return;
         }
 
@@ -491,8 +554,8 @@ public final class MainActivity extends Activity {
             for (String candidate : candidates) {
                 postLinkStatus(attempt, "Trying " + candidate + "...", false);
                 try {
-                    InitialData data = loadInitialData(candidate, token);
-                    postRemote(attempt, data, token, "Linked to " + data.client.getBaseUrl());
+                    InitialData data = loadInitialData(candidate);
+                    postRemote(attempt, data, false, "Linked to " + data.client.getBaseUrl());
                     return;
                 } catch (Exception error) {
                     lastError = error;
@@ -504,21 +567,45 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private InitialData loadInitialData(String baseUrl, String token) throws Exception {
-        BotApiClient client = new BotApiClient(baseUrl, token);
+    private void linkCloud() {
+        String baseUrl;
+        try {
+            baseUrl = LinkTarget.cloudBaseUrl(cloudSiteInput.getText().toString(), cloudChannelInput.getText().toString());
+        } catch (IllegalArgumentException error) {
+            nextLinkAttempt();
+            updateLinkStatus(error.getMessage(), true);
+            return;
+        }
+
+        int attempt = nextLinkAttempt();
+        updateLinkStatus("Trying " + baseUrl + "...", false);
+        io.execute(() -> {
+            try {
+                InitialData data = loadInitialData(baseUrl);
+                postRemote(attempt, data, true, "Linked to " + data.client.getBaseUrl());
+            } catch (Exception error) {
+                postLinkStatus(attempt, "Could not link. Check the website and channel. " + error.getMessage(), true);
+            }
+        });
+    }
+
+    private InitialData loadInitialData(String baseUrl) throws Exception {
+        BotApiClient client = new BotApiClient(baseUrl, tokenFor(baseUrl));
         BotState state = client.getState();
         List<Song> fetchedSongs = client.getSongs();
         return new InitialData(client, state, fetchedSongs);
     }
 
-    private void postRemote(int attempt, InitialData data, String token, String notice) {
+    private void postRemote(int attempt, InitialData data, boolean cloud, String notice) {
         mainHandler.post(() -> {
             if (attempt != linkAttemptId) return;
+            String baseUrl = data.client.getBaseUrl();
             preferences.edit()
-                    .putString(KEY_BASE_URL, data.client.getBaseUrl())
-                    .putString(KEY_TOKEN, token)
+                    .putString(KEY_BASE_URL, baseUrl)
+                    .putString(KEY_MODE, cloud ? MODE_CLOUD : MODE_LAN)
                     .apply();
-            showRemoteUi(data, token, notice);
+            boolean paired = !tokenFor(baseUrl).isEmpty();
+            showRemoteUi(data, cloud, paired ? notice : notice + " Not paired yet: tap Update Token.");
         });
     }
 
@@ -532,8 +619,23 @@ public final class MainActivity extends Activity {
         return ++linkAttemptId;
     }
 
-    private String currentToken() {
+    private boolean isCloudMode() {
+        return MODE_CLOUD.equals(preferences.getString(KEY_MODE, MODE_LAN));
+    }
+
+    // The saved token, but only for the bot it was paired with. Any other address gets none.
+    private String tokenFor(String baseUrl) {
+        String boundUrl = preferences.getString(KEY_TOKEN_URL, "");
+        String target = BotApiClient.normalizeBaseUrl(baseUrl);
+        if (target.isEmpty() || !target.equals(boundUrl)) return "";
         return preferences.getString(KEY_TOKEN, "").trim();
+    }
+
+    private String deviceName() {
+        String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.trim();
+        String model = Build.MODEL == null ? "" : Build.MODEL.trim();
+        String name = model.toLowerCase(Locale.ROOT).startsWith(maker.toLowerCase(Locale.ROOT)) ? model : (maker + " " + model).trim();
+        return name.isEmpty() ? "Android phone" : name;
     }
 
     private void showTokenDialog() {
@@ -548,7 +650,9 @@ public final class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
                 .setTitle("Update token")
-                .setMessage("Use Pair Phone in the desktop app, then enter the 6-digit code here. Pasting a dashboard token still works.")
+                .setMessage(linkedCloud
+                        ? "Open your dashboard on the website, click Phone, then enter the 6-digit code here."
+                        : "Use Pair Phone in the desktop app, then enter the 6-digit code here. Pasting a dashboard token still works.")
                 .setView(content)
                 .setPositiveButton("Update Token", (dialog, which) -> pairOrUpdateToken(input.getText().toString().trim()))
                 .setNegativeButton("Cancel", null)
@@ -566,11 +670,16 @@ public final class MainActivity extends Activity {
 
     private void pairWithCode(String code) {
         showMessage("Pairing phone...", false);
+        BotApiClient client = apiClient;
+        String pairedUrl = linkedBaseUrl;
         io.execute(() -> {
             try {
-                String token = apiClient.pairCompanion(code);
+                String token = client.pairCompanion(code, deviceName());
                 if (token.isEmpty()) throw new Exception("Pairing succeeded, but no token was returned.");
-                mainHandler.post(() -> updateToken(token));
+                mainHandler.post(() -> {
+                    // The token belongs to the bot that issued it, not to whatever is linked by now.
+                    if (pairedUrl.equals(linkedBaseUrl)) updateToken(token);
+                });
             } catch (Exception error) {
                 mainHandler.post(() -> showMessage(error.getMessage(), true));
             }
@@ -578,8 +687,12 @@ public final class MainActivity extends Activity {
     }
 
     private void updateToken(String token) {
-        preferences.edit().putString(KEY_TOKEN, token).apply();
-        if (!linkedBaseUrl.isEmpty()) apiClient = new BotApiClient(linkedBaseUrl, token);
+        if (linkedBaseUrl.isEmpty()) return;
+        preferences.edit()
+                .putString(KEY_TOKEN, token)
+                .putString(KEY_TOKEN_URL, linkedBaseUrl)
+                .apply();
+        apiClient = new BotApiClient(linkedBaseUrl, token);
         showMessage(token.isEmpty() ? "Token cleared." : "Token updated.", false);
     }
 
@@ -588,7 +701,8 @@ public final class MainActivity extends Activity {
         linkedBaseUrl = "";
         apiClient = null;
         if (eventStreamClient != null) eventStreamClient.stop();
-        preferences.edit().remove(KEY_BASE_URL).apply();
+        // Unlinking forgets the bot and its token; linking again means pairing again.
+        preferences.edit().remove(KEY_BASE_URL).remove(KEY_TOKEN).remove(KEY_TOKEN_URL).apply();
         showLinkPage();
     }
 

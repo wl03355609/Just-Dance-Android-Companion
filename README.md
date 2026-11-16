@@ -8,8 +8,12 @@ local-only setups.
 ## How It Works
 
 ```text
-Android phone  ->  http://computer-ip:3000  ->  Just Dance request bot
+Same Wi-Fi:  Android phone  ->  http://computer-ip:3000          ->  desktop bot
+Cloud:       Android phone  ->  https://your-site/c/<channel>   ->  hosted bot
 ```
+
+The app has two ways to link. **Same Wi-Fi** is for the desktop bot on your
+computer. **Cloud** is for a hosted bot (a website you log in to with Twitch).
 
 When using an older local-only bot, the optional bridge forwards:
 
@@ -46,6 +50,35 @@ After the app links, click **Pair Phone** in the desktop app, then tap **Update
 Token** in the Android app and enter the 6-digit code. The Android app stores
 the dashboard token automatically after pairing, so you do not need to copy the
 raw token.
+
+## Cloud Link
+
+For a hosted bot, no scanning is involved:
+
+1. On the link screen, under **Cloud**, enter the website (for example
+   `jd.example.com`) and your Twitch channel name, or paste your
+   `https://.../c/<channel>` link into the website field. Only `https` sites are
+   accepted.
+2. Tap **Link Cloud**. The queue shows up right away, read-only.
+3. On the website, open your dashboard and click **Phone**. Tap **Update
+   Token** in the app and enter the 6-digit code.
+
+Each phone gets its own token from the site. To cut a phone off, open **Phone**
+on the dashboard and click **Remove** next to it.
+
+## Where The Token Goes
+
+- The saved token belongs to the one bot it was paired with. If the app links
+  to a different address (another computer, a new IP address, another site or
+  channel), it sends no token there, and you pair again.
+- Reading the queue and song list sends no token at all. Only the control
+  buttons do.
+- The token is only sent over `https`, or over plain `http` to an address on
+  your own network.
+- **Unlink** forgets both the bot and its token.
+- Scanning only looks at private home/office networks, and a bot found by
+  broadcast must answer from its own private address.
+- The token is left out of Android backups and device-to-device transfers.
 
 ## Optional Legacy Bridge
 
@@ -100,9 +133,18 @@ The app supports:
 - dark/light overlay theme switching
 - enabled game filters
 - saved server URL and dashboard token
+- hosted (cloud) bots over https, with a per-phone token
 
-Android must be on the same Wi-Fi network as the computer running the bot or
-optional bridge.
+For the desktop bot, Android must be on the same Wi-Fi network as the computer
+running the bot or optional bridge. A hosted bot works from any connection.
+
+Build and test from the command line (Gradle 8.7 or newer, JDK 17, Android SDK
+35):
+
+```bash
+cd android
+gradle testDebugUnitTest assembleDebug
+```
 
 ## Disclaimer
 
