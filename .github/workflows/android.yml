@@ -1,6 +1,6 @@
 name: Android build
 
-# Compiles the debug APK and runs the unit tests. It does not sign or publish anything.
+# Compiles the debug APK, runs the unit tests and keeps the APK as a run artifact. It does not publish anything.
 
 on:
   pull_request:
@@ -29,3 +29,10 @@ jobs:
       - name: Unit tests and debug build
         working-directory: android
         run: gradle --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Keep the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
